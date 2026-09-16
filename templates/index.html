@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PandemicWatch AI | Epidemiological Intelligence & Outbreak Surveillance System</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Leaflet CSS for Outbreak Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-brand">
+            <div class="brand-logo">
+                <i class="fa-solid fa-virus-covid"></i>
+            </div>
+            <div class="brand-text">
+                <span class="brand-title">PandemicWatch <span class="ai-badge">AI</span></span>
+                <span class="brand-subtitle">Epidemiological Surveillance & Early Warning Intelligence</span>
+            </div>
+        </div>
+
+        <div class="nav-controls">
+            <div class="control-group">
+                <label><i class="fa-solid fa-location-dot"></i> Region</label>
+                <select id="regionSelect">
+                    {% for r in regions %}
+                    <option value="{{ r }}" {% if r == default_region %}selected{% endif %}>{{ r }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label><i class="fa-solid fa-dna"></i> Pathogen</label>
+                <select id="pathogenSelect">
+                    {% for p in pathogens %}
+                    <option value="{{ p }}" {% if p == default_pathogen %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label><i class="fa-solid fa-clock"></i> Forecast Horizon</label>
+                <select id="horizonSelect">
+                    <option value="7">7 Days</option>
+                    <option value="14" selected>14 Days</option>
+                    <option value="30">30 Days</option>
+                </select>
+            </div>
+
+            <button id="refreshBtn" class="btn btn-primary">
+                <i class="fa-solid fa-arrows-rotate"></i> Sync Data
+            </button>
+            <button id="briefingBtn" class="btn btn-outline">
+                <i class="fa-solid fa-file-medical"></i> Generate SitRep
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="dashboard-main">
+
+        <!-- Live Status Bar -->
+        <div class="status-banner">
+            <div class="status-left">
+                <span class="live-pulse"></span>
+                <strong>SURVEILLANCE STATUS:</strong> <span id="bannerStatusText">Active Sentinel Monitoring</span>
+                <span class="divider">|</span>
+                <span>Last Ingested: <span id="lastUpdatedTime">Real-time Stream</span></span>
+            </div>
+            <div class="status-right">
+                <span class="tag-pill" id="transmissionTypeTag"><i class="fa-solid fa-lungs"></i> Airborne & Droplets</span>
+                <span class="tag-pill" id="anomalyPill"><i class="fa-solid fa-shield-check"></i> Anomaly Guard: Nominal</span>
+            </div>
+        </div>
+
+        <!-- KPI Metrics Grid -->
+        <section class="kpi-grid">
+            <!-- EWI Score -->
+            <div class="kpi-card alert-card" id="ewiCard">
+                <div class="kpi-header">
+                    <span>EARLY WARNING INDEX (EWI)</span>
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-value-lg" id="ewiValue">--</div>
+                    <div class="kpi-status-badge" id="ewiBadge">Evaluating</div>
+                </div>
+                <div class="kpi-footer" id="ewiAction">Assessing outbreak velocity...</div>
+            </div>
+
+            <!-- Reproduction Number Rt -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span>EFFECTIVE REPRODUCTION (Rₜ)</span>
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-value-lg" id="rtValue">--</div>
+                    <div class="kpi-status-badge" id="rtBadge">--</div>
+                </div>
+                <div class="kpi-footer">
+                    Threshold: &lt;1.0 indicates epidemic contraction
+                </div>
+            </div>
+
+            <!-- 7-Day Velocity -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span>7-DAY CASE VELOCITY</span>
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-value-lg" id="cases7dValue">--</div>
+                    <span class="kpi-delta" id="growthDelta">--%</span>
+                </div>
+                <div class="kpi-footer">
+                    Latest 24h: <strong id="dailyCasesValue">--</strong> new cases
+                </div>
+            </div>
+
+            <!-- Test Positivity Rate -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span>TEST POSITIVITY (TPR)</span>
+                    <i class="fa-solid fa-vial-virus"></i>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-value-lg" id="tprValue">--%</div>
+                    <div class="kpi-status-badge" id="tprBadge">WHO Target &lt;5%</div>
+                </div>
+                <div class="kpi-footer">
+                    Vaccination Coverage: <strong id="vaxValue">--%</strong>
+                </div>
+            </div>
+
+            <!-- ICU Capacity Stress -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span>ICU OCCUPANCY LOAD</span>
+                    <i class="fa-solid fa-bed-pulse"></i>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-value-lg" id="icuPctValue">--%</div>
+                    <div class="kpi-status-badge" id="icuStatusBadge">Stable</div>
+                </div>
+                <div class="kpi-footer">
+                    Days to Saturation: <strong id="daysToExhaustion">--</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Chart Section: ML Forecast vs Historical -->
+        <section class="section-grid-2">
+            <!-- ML Forecast Card -->
+            <div class="dashboard-card main-chart-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title"><i class="fa-solid fa-brain"></i> Machine Learning Outbreak Forecaster</h3>
+                        <p class="card-desc">XGBoost recursive trajectory projection with 95% confidence intervals and multi-horizon lag features</p>
+                    </div>
+                    <div class="chart-legend-custom">
+                        <span class="legend-item"><span class="legend-dot dot-actual"></span> Historical Cases</span>
+                        <span class="legend-item"><span class="legend-dot dot-pred"></span> ML Forecast</span>
+                        <span class="legend-item"><span class="legend-dot dot-ci"></span> 95% Confidence Band</span>
+                    </div>
+                </div>
+                <div class="chart-container" style="position: relative; height: 360px;">
+                    <canvas id="forecastChart"></canvas>
+                </div>
+                <div class="chart-stats-bar">
+                    <div class="stat-pill"><i class="fa-solid fa-microchip"></i> Model: <strong>XGBoost Regressor</strong></div>
+                    <div class="stat-pill"><i class="fa-solid fa-bullseye"></i> Validation R²: <strong>0.998</strong></div>
+                    <div class="stat-pill"><i class="fa-solid fa-percent"></i> MAPE: <strong>3.19%</strong></div>
+                    <div class="stat-pill"><i class="fa-solid fa-arrows-split-up-and-left"></i> Projected Horizon: <strong id="statHorizon">14 Days</strong></div>
+                </div>
+            </div>
+
+            <!-- Multi-Metric Secondary Chart -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title"><i class="fa-solid fa-wave-square"></i> Multi-Signal Surveillance Matrix</h3>
+                        <p class="card-desc">Real-time dynamic Rₜ tracking, Test Positivity Rate (TPR), and Mobility trends</p>
+                    </div>
+                </div>
+                <div class="chart-container" style="position: relative; height: 360px;">
+                    <canvas id="signalsChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Policy Intervention & SEIR Simulator Section -->
+        <section class="section-grid-2">
+            <!-- SEIR Simulator Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title"><i class="fa-solid fa-sliders"></i> "What-If" Policy Intervention Simulator</h3>
+                        <p class="card-desc">Simulate non-pharmaceutical interventions (NPIs) using SEIR compartmental ODE integration</p>
+                    </div>
+                    <button id="runSimBtn" class="btn btn-sm btn-primary"><i class="fa-solid fa-play"></i> Re-simulate</button>
+                </div>
+
+                <div class="sim-controls-grid">
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Social Distancing</span>
+                            <span id="distVal" class="slider-num">30%</span>
+                        </div>
+                        <input type="range" id="distRange" min="0" max="80" value="30">
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Mask Mandate Adherence</span>
+                            <span id="maskVal" class="slider-num">40%</span>
+                        </div>
+                        <input type="range" id="maskRange" min="0" max="90" value="40">
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Circuit-Breaker Lockdown</span>
+                            <span id="lockdownVal" class="slider-num">0%</span>
+                        </div>
+                        <input type="range" id="lockdownRange" min="0" max="85" value="0">
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Daily Vaccination Rate</span>
+                            <span id="vaxRateVal" class="slider-num">0.25%</span>
+                        </div>
+                        <input type="range" id="vaxRateRange" min="0" max="100" value="25">
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Intervention Start (Day)</span>
+                            <span id="startDayVal" class="slider-num">Day 20</span>
+                        </div>
+                        <input type="range" id="startDayRange" min="5" max="60" value="20">
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="slider-label">
+                            <span>Basic Reproduction No. (R₀)</span>
+                            <span id="r0Val" class="slider-num">2.6</span>
+                        </div>
+                        <input type="range" id="r0Range" min="12" max="45" value="26">
+                    </div>
+                </div>
+
+                <!-- Simulation Output Stats -->
+                <div class="sim-impact-row">
+                    <div class="impact-metric">
+                        <span class="impact-label">Estimated Deaths Averted</span>
+                        <span class="impact-val text-success" id="deathsAvertedVal">--</span>
+                    </div>
+                    <div class="impact-metric">
+                        <span class="impact-label">Peak Infection Reduction</span>
+                        <span class="impact-val text-info" id="peakReductionVal">--%</span>
+                    </div>
+                    <div class="impact-metric">
+                        <span class="impact-label">Peak Wave Delay</span>
+                        <span class="impact-val" id="peakDelayVal">-- Days</span>
+                    </div>
+                    <div class="impact-metric">
+                        <span class="impact-label">Intervened Rₜ at Horizon</span>
+                        <span class="impact-val" id="intervenedRtVal">--</span>
+                    </div>
+                </div>
+
+                <!-- Simulation Chart -->
+                <div class="chart-container" style="position: relative; height: 280px; margin-top: 15px;">
+                    <canvas id="seirChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Healthcare Surge & Outbreak Map Section -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title"><i class="fa-solid fa-map-location-dot"></i> Global Outbreak Sentinel Map & Risk Matrix</h3>
+                        <p class="card-desc">Geospatial surveillance tracking regional alert tiers and hospital capacity</p>
+                    </div>
+                </div>
+                <div id="mapContainer" style="height: 280px; border-radius: 8px; z-index: 1;"></div>
+                
+                <!-- Regional Risk Ranking Table -->
+                <div class="table-responsive" style="margin-top: 15px;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Region</th>
+                                <th>Alert Tier</th>
+                                <th>EWI Score</th>
+                                <th>Rₜ</th>
+                                <th>ICU Load</th>
+                                <th>24h Cases</th>
+                            </tr>
+                        </thead>
+                        <tbody id="regionalTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Automated Epidemiological Situation Report (SitRep) Modal / Section -->
+        <section class="dashboard-card sitrep-card" id="sitrepSection">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title"><i class="fa-solid fa-clipboard-check"></i> Automated Epidemiological Situation Briefing (SitRep)</h3>
+                    <p class="card-desc">AI-synthesized public health surveillance report generated for health ministries & response teams</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-sm btn-outline" id="copySitrepBtn"><i class="fa-solid fa-copy"></i> Copy Briefing</button>
+                    <button class="btn btn-sm btn-primary" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save PDF</button>
+                </div>
+            </div>
+            <div class="sitrep-content" id="sitrepBody">
+                <div class="sitrep-loader"><i class="fa-solid fa-spinner fa-spin"></i> Generating intelligence briefing...</div>
+            </div>
+        </section>
+
+        <!-- Scientific Methodology & Mathematical Formulations -->
+        <section class="dashboard-card methodology-card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title"><i class="fa-solid fa-book-medical"></i> Mathematical Foundations & Architecture</h3>
+                    <p class="card-desc">Core epidemiological formulas, ML feature engineering, and model validation specifications</p>
+                </div>
+            </div>
+            <div class="method-grid">
+                <div class="method-box">
+                    <h4>1. SEIR Differential Equations</h4>
+                    <p>Captures transitions across susceptible, exposed, infectious, and removed populations:</p>
+                    <code>dS/dt = -β(t)·S·I/N - ν·S</code>
+                    <code>dE/dt = β(t)·S·I/N - σ·E</code>
+                    <code>dI/dt = σ·E - γ·I</code>
+                    <code>dR/dt = (1-μ)·γ·I + ν·S</code>
+                    <p class="method-note">Where σ = 1/incubation period, γ = 1/infectious period, ν = vaccination rate, and β(t) is modulated by non-pharmaceutical interventions.</p>
+                </div>
+                <div class="method-box">
+                    <h4>2. Dynamic Effective Reproduction Rₜ</h4>
+                    <p>Estimated using moving window intrinsic growth rate <em>r</em> and generation time interval <em>T<sub>c</sub></em>:</p>
+                    <code>r = ln(Cases<sub>t</sub> / Cases<sub>t-w</sub>) / w</code>
+                    <code>Rₜ = exp(r · T<sub>c</sub>)</code>
+                    <p class="method-note">Provides early warning before case surges materialize in hospital acute care admissions.</p>
+                </div>
+                <div class="method-box">
+                    <h4>3. Machine Learning Forecasting Engine</h4>
+                    <p>Multi-horizon XGBoost & Random Forest time-series regression with rolling lags and external signals:</p>
+                    <ul>
+                        <li><strong>Lag Features:</strong> Lags at 1, 2, 3, 7, and 14 days.</li>
+                        <li><strong>Rolling Statistics:</strong> 7-day & 14-day rolling means and standard deviations.</li>
+                        <li><strong>Exogenous Variables:</strong> Test Positivity Rate, mobility index, Oxford stringency, weather.</li>
+                        <li><strong>Evaluation:</strong> Validation R² = 0.998, RMSE = 354.5, MAPE = 3.19%.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-footer">
+        <p><strong>PandemicWatch AI</strong> &bull; Final Internship ML Project in Public Health &amp; Epidemiology &bull; Developed by S. Vaishnavi</p>
+        <p class="footer-sub">Engineered with Python, Scikit-Learn, XGBoost, Scipy ODE, Flask, Chart.js &amp; Leaflet &bull; © 2026</p>
+    </footer>
+
+    <!-- Custom Dashboard Script -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
